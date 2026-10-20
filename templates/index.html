@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI Life Assistant - Your smart everyday companion for tasks, habits, and daily planning powered by Google Gemini AI.">
+  <title>AI Life Assistant – Your Smart Everyday Companion</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- ==========================================
+         SIDEBAR NAVIGATION
+         ========================================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-icon" aria-hidden="true">
+          <!-- Celestial Spark Assistant Icon -->
+          <svg fill="currentColor" viewBox="0 0 24 24" width="22" height="22">
+            <path d="M12 2L14.4 8.6L21 11L14.4 13.4L12 20L9.6 13.4L3 11L9.6 8.6L12 2Z"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>AI Life Assistant</h1>
+          <p>Smart Everyday Companion</p>
+        </div>
+      </div>
+
+      <nav aria-label="Main Navigation">
+        <ul class="nav-links">
+          <li>
+            <a class="nav-link active" data-tab="dashboard" id="nav-dashboard" href="#dashboard">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+              <span>Dashboard</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-tab="tasks" id="nav-tasks" href="#tasks">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+              <span>Task Manager</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-tab="habits" id="nav-habits" href="#habits">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
+              <span>Habit Tracker</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-tab="planner" id="nav-planner" href="#planner">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              <span>Daily Planner</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-tab="chat" id="nav-chat" href="#chat">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+              <span>AI Assistant</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="ai-status-pill" id="sidebarAiStatus">
+          <span class="status-dot"></span>
+          <span>Checking AI...</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ==========================================
+         MAIN VIEW CONTAINER
+         ========================================== -->
+    <main class="main-content">
+      <!-- Top Sticky Navigation Bar -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle navigation menu">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="greeting-text">
+            <h2 id="greetingHeading">Welcome Back</h2>
+            <p class="greeting-date" id="greetingDate">Loading current date...</p>
+          </div>
+        </div>
+
+        <div class="top-bar-actions">
+          <button class="btn btn-secondary btn-sm" onclick="window.openTaskModal()">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>+ Task</span>
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="document.getElementById('nav-chat').click()">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            <span>Ask AI</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="content-body">
+        <!-- ==========================================
+             TAB 1: DASHBOARD VIEW
+             ========================================== -->
+        <section class="view-panel active" id="view-dashboard">
+          <!-- Top Statistics Cards -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon tasks">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3>Pending Tasks</h3>
+                <div class="stat-number" id="statPendingTasks">0</div>
+                <div class="stat-subtext">Awaiting action</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon completed">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3>Completed</h3>
+                <div class="stat-number" id="statCompletedTasks">0 / 0</div>
+                <div class="stat-subtext">Overall tasks done</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon habits">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3>Habits Today</h3>
+                <div class="stat-number" id="statHabitsToday">0 / 0</div>
+                <div class="stat-subtext">Habits completed</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon score">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3>Productivity</h3>
+                <div class="stat-number" id="statProductivityScore">0%</div>
+                <div class="stat-subtext">Daily progress score</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Middle Strip: Progress Meter & Daily Quote -->
+          <div class="dashboard-middle-grid">
+            <div class="dashboard-card">
+              <div class="card-header-flex">
+                <h3>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                  <span>Daily Progress Meter</span>
+                </h3>
+                <span class="badge badge-category" id="productivityScoreText">0% Completed</span>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">Real-time composite score combining today's task completion and active habit streaks.</p>
+              <div class="progress-bar-container">
+                <div class="progress-bar-track">
+                  <div class="progress-bar-fill" id="productivityProgressBar" style="width: 0%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dashboard-card">
+              <div class="card-header-flex">
+                <h3>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                  <span>Daily Motivation</span>
+                </h3>
+              </div>
+              <div class="quote-box">
+                <div id="dailyQuoteText">“Small daily improvements over time lead to stunning results.”</div>
+                <div class="quote-author" id="dailyQuoteAuthor">— Robin Sharma</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Action Buttons Strip -->
+          <div class="quick-actions-bar">
+            <div class="quick-action-btn" data-quick-action="add-task">
+              <div class="quick-action-icon">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              </div>
+              <div class="quick-action-text">
+                <strong>+ New Task</strong>
+                <span>Add actionable item</span>
+              </div>
+            </div>
+
+            <div class="quick-action-btn" data-quick-action="habits">
+              <div class="quick-action-icon">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <div class="quick-action-text">
+                <strong>Record Habit</strong>
+                <span>Keep your streak alive</span>
+              </div>
+            </div>
+
+            <div class="quick-action-btn" data-quick-action="ai-chat">
+              <div class="quick-action-icon">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              </div>
+              <div class="quick-action-text">
+                <strong>Open AI Chat</strong>
+                <span>Get tailored advice</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Grid: Upcoming Tasks -->
+          <div class="dashboard-bottom-grid">
+            <div class="dashboard-card" style="grid-column: 1 / -1;">
+              <div class="card-header-flex">
+                <h3>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <span>Upcoming Tasks</span>
+                </h3>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('nav-tasks').click()">View All Tasks</button>
+              </div>
+              <div class="task-list" id="upcomingTasksList">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 2: TASK MANAGER VIEW
+             ========================================== -->
+        <section class="view-panel" id="view-tasks">
+          <div class="card-header-flex" style="margin-bottom: 20px;">
+            <div>
+              <h2 style="font-size: 1.4rem; font-weight: 700;">Task Management</h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">Organize, prioritize, and track your daily commitments.</p>
+            </div>
+            <button class="btn btn-primary" id="openAddTaskModalBtn">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              <span>+ New Task</span>
+            </button>
+          </div>
+
+          <!-- Controls: Filters, Search, Sort -->
+          <div class="controls-bar">
+            <div class="filters-group">
+              <button class="filter-chip task-filter-chip active" data-status="all">All</button>
+              <button class="filter-chip task-filter-chip" data-status="today">Due Today</button>
+              <button class="filter-chip task-filter-chip" data-status="pending">Pending</button>
+              <button class="filter-chip task-filter-chip" data-status="completed">Completed</button>
+              <button class="filter-chip task-filter-chip" data-status="overdue">Overdue</button>
+            </div>
+
+            <div class="search-sort-group">
+              <div class="search-box">
+                <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input type="text" class="form-control" id="taskSearchInput" placeholder="Search tasks...">
+              </div>
+
+              <select class="form-control" id="taskPriorityFilter" style="width: auto;">
+                <option value="all">All Priorities</option>
+                <option value="High">High Priority</option>
+                <option value="Medium">Medium Priority</option>
+                <option value="Low">Low Priority</option>
+              </select>
+
+              <select class="form-control" id="taskSortSelect" style="width: auto;">
+                <option value="due_date_asc">Due Date (Earliest)</option>
+                <option value="due_date_desc">Due Date (Latest)</option>
+                <option value="priority_desc">Priority (High to Low)</option>
+                <option value="created_at_desc">Recently Added</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Tasks List Container -->
+          <div class="task-list" id="taskList">
+            <!-- Dynamically populated -->
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 3: HABIT TRACKER VIEW
+             ========================================== -->
+        <section class="view-panel" id="view-habits">
+          <div class="card-header-flex" style="margin-bottom: 20px;">
+            <div>
+              <h2 style="font-size: 1.4rem; font-weight: 700;">Habit Tracker</h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted);" id="habitCompletionRateText">Build positive daily rituals and track streaks.</p>
+            </div>
+            <button class="btn btn-primary" id="openAddHabitModalBtn">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              <span>+ New Habit</span>
+            </button>
+          </div>
+
+          <!-- Habit Progress Bar -->
+          <div class="dashboard-card" style="margin-bottom: 24px; padding: 18px 24px;">
+            <div class="progress-bar-header">
+              <span>Today's Habit Completion Rate</span>
+            </div>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" id="habitProgressBar" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Habits Grid -->
+          <div class="habit-grid" id="habitGrid">
+            <!-- Dynamically populated -->
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 4: DAILY PLANNER VIEW
+             ========================================== -->
+        <section class="view-panel" id="view-planner">
+          <div class="card-header-flex" style="margin-bottom: 20px;">
+            <div>
+              <h2 style="font-size: 1.4rem; font-weight: 700;">Personalized Daily Planner</h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">Smart structured breakdown of your daily priorities.</p>
+            </div>
+            <button class="btn btn-primary" id="askAiPlanBtn">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span>✨ Ask AI to Optimize My Day</span>
+            </button>
+          </div>
+
+          <!-- Overdue Alert Callout (shown if overdue tasks exist) -->
+          <div class="dashboard-card" id="plannerOverdueAlert" style="display: none; border-color: rgba(244, 63, 94, 0.4); background: rgba(244, 63, 94, 0.08); margin-bottom: 20px;">
+            <h3 style="color: #fb7185; display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              <span>Overdue Tasks Requiring Attention</span>
+            </h3>
+            <div id="plannerOverdueList"></div>
+          </div>
+
+          <!-- Suggested Time Blocks -->
+          <div class="planner-blocks-grid">
+            <div class="planner-block">
+              <div class="planner-block-header">
+                <span style="font-size: 1.3rem;">🌅</span>
+                <div>
+                  <h4>Morning Focus</h4>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">High willpower & deep work</div>
+                </div>
+                <span class="block-time-badge">08:00 - 12:00</span>
+              </div>
+              <div id="plannerMorningList"></div>
+            </div>
+
+            <div class="planner-block">
+              <div class="planner-block-header">
+                <span style="font-size: 1.3rem;">☀️</span>
+                <div>
+                  <h4>Afternoon Execution</h4>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Collaborations & medium tasks</div>
+                </div>
+                <span class="block-time-badge">12:00 - 17:00</span>
+              </div>
+              <div id="plannerAfternoonList"></div>
+            </div>
+
+            <div class="planner-block">
+              <div class="planner-block-header">
+                <span style="font-size: 1.3rem;">🌆</span>
+                <div>
+                  <h4>Evening Wrap-up</h4>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Habit review & tomorrow prep</div>
+                </div>
+                <span class="block-time-badge">17:00 - 21:00</span>
+              </div>
+              <div id="plannerEveningList"></div>
+            </div>
+          </div>
+
+          <!-- Disclaimer Banner -->
+          <div class="planner-disclaimer" style="margin-top: 24px;">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span><strong>Smart Note:</strong> AI-generated schedules and time blocks are flexible suggestions for guidance, not rigid calendar syncs. Always adjust them to your personal schedule.</span>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 5: AI CONVERSATIONAL ASSISTANT
+             ========================================== -->
+        <section class="view-panel" id="view-chat">
+          <div class="chat-container">
+            <!-- Chat Header -->
+            <div class="chat-header">
+              <div class="chat-header-info">
+                <div class="chat-avatar">
+                  <svg fill="currentColor" viewBox="0 0 24 24" width="22" height="22">
+                    <path d="M12 2L14.4 8.6L21 11L14.4 13.4L12 20L9.6 13.4L3 11L9.6 8.6L12 2Z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 style="font-size: 1.05rem; font-weight: 700;">AI Life Assistant</h3>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="badge badge-priority-Low" id="chatAiBadge">AI Ready</span>
+                    <span style="font-size: 0.75rem; color: var(--text-dim);">Context-aware productivity partner</span>
+                  </div>
+                </div>
+              </div>
+
+              <button class="btn btn-secondary btn-sm" id="clearChatBtn" title="Clear conversation history">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <span>Clear Chat</span>
+              </button>
+            </div>
+
+            <!-- Suggested Prompt Chips -->
+            <div class="prompt-chips-wrapper">
+              <button class="prompt-chip" data-prompt="Plan my day.">📅 Plan my day.</button>
+              <button class="prompt-chip" data-prompt="Help me prioritize my tasks.">🎯 Help me prioritize my tasks.</button>
+              <button class="prompt-chip" data-prompt="Suggest a productive daily routine.">⚡ Suggest a productive daily routine.</button>
+              <button class="prompt-chip" data-prompt="Help me build a study habit.">📚 Help me build a study habit.</button>
+              <button class="prompt-chip" data-prompt="Summarize my pending tasks.">📊 Summarize my pending tasks.</button>
+            </div>
+
+            <!-- Chat Messages Stream -->
+            <div class="chat-messages" id="chatMessages">
+              <div class="chat-bubble assistant">
+                👋 Hello! I am your <strong>AI Life Assistant</strong>. Ask me anything, or tap any of the suggested prompt chips above to organize your day, prioritize your commitments, or establish enduring habits.
+              </div>
+            </div>
+
+            <!-- Chat Input Bar -->
+            <div class="chat-input-bar">
+              <div class="chat-input-wrapper">
+                <textarea class="chat-textarea" id="chatInput" placeholder="Ask anything or request assistance (Press Enter to send, Shift+Enter for new line)..." rows="1"></textarea>
+              </div>
+              <button class="btn btn-primary btn-icon" id="sendChatBtn" aria-label="Send message" style="height: 44px; width: 44px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ==========================================
+       MODAL: ADD / EDIT TASK
+       ========================================== -->
+  <div class="modal-backdrop" id="taskModal" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 id="taskModalTitle">Create New Task</h3>
+        <button class="modal-close-btn modal-close-trigger" aria-label="Close modal">&times;</button>
+      </div>
+      <form id="taskForm">
+        <div class="modal-body">
+          <input type="hidden" id="taskId">
+
+          <div class="form-group">
+            <label class="form-label" for="taskTitle">Task Title *</label>
+            <input type="text" class="form-control" id="taskTitle" placeholder="e.g. Complete quarterly financial review" required maxlength="200">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="taskDesc">Description (Optional)</label>
+            <textarea class="form-control" id="taskDesc" placeholder="Additional details or steps..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="taskDueDate">Due Date</label>
+              <input type="date" class="form-control" id="taskDueDate">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="taskPriority">Priority</label>
+              <select class="form-control" id="taskPriority">
+                <option value="Low">Low</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="High">High</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="taskCategory">Category</label>
+            <input type="text" class="form-control" id="taskCategory" placeholder="e.g. Work, Personal, Health, Study" value="General">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close-trigger">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: ADD / EDIT HABIT
+       ========================================== -->
+  <div class="modal-backdrop" id="habitModal" role="dialog" aria-modal="true" aria-labelledby="habitModalTitle">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 id="habitModalTitle">Create New Habit</h3>
+        <button class="modal-close-btn modal-close-trigger" aria-label="Close modal">&times;</button>
+      </div>
+      <form id="habitForm">
+        <div class="modal-body">
+          <input type="hidden" id="habitId">
+
+          <div class="form-group">
+            <label class="form-label" for="habitName">Habit Name *</label>
+            <input type="text" class="form-control" id="habitName" placeholder="e.g. 20-min Morning Meditation" required maxlength="100">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="habitDesc">Description (Optional)</label>
+            <textarea class="form-control" id="habitDesc" placeholder="Why this habit matters or how to do it..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="habitFrequency">Target Frequency</label>
+            <select class="form-control" id="habitFrequency">
+              <option value="daily" selected>Daily</option>
+              <option value="weekdays">Weekdays Only</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close-trigger">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Habit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: CONFIRMATION
+       ========================================== -->
+  <div class="modal-backdrop" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">Confirm Action</h3>
+        <button class="modal-close-btn modal-close-trigger" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalMessage" style="font-size: 0.95rem; color: var(--text-main);">Are you sure you want to proceed?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary modal-close-trigger">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmActionBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- Core JavaScript -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
