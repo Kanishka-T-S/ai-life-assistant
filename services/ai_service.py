@@ -1,8 +1,11 @@
 import os
+import logging
 from datetime import date
 from typing import Any, Dict, List, Optional
 from services.task_service import get_tasks, get_task_stats
 from services.habit_service import get_habits, get_habit_stats
+
+logger = logging.getLogger(__name__)
 
 # Try importing the official Google GenAI SDK
 try:
@@ -237,8 +240,15 @@ def chat_with_assistant(
     system_context = build_system_context(db)
 
     # Check if API key is provided
-    effective_api_key = (api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
-    effective_model = (model_name or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")).strip()
+    if api_key is None:
+        effective_api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    else:
+        effective_api_key = str(api_key).strip()
+
+    if model_name is None:
+        effective_model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    else:
+        effective_model = str(model_name).strip()
 
     if not effective_api_key or not HAS_GENAI_SDK:
         # Running in Demo Mode
@@ -284,13 +294,25 @@ def chat_with_assistant(
         }
 
     except Exception as exc:
-        # Graceful fallback on API error (e.g. invalid key, quota, offline)
+        # Graceful fallback on API error (e.g. quota, high demand, offline)
         error_msg = str(exc)
+        # Redact any accidental credential leak from error messages
+        if effective_api_key and effective_api_key in error_msg:
+            error_msg = error_msg.replace(effective_api_key, "[REDACTED_API_KEY]")
+
+        logger.warning(
+            "Gemini API call to model '%s' failed (%s: %s). Falling back to Demo Mode.",
+            effective_model,
+            type(exc).__name__,
+            error_msg[:200]
+        )
+        print(f"[Gemini API Warning] Model '{effective_model}' unavailable ({type(exc).__name__}: {error_msg[:120]}). Falling back to Demo Mode.")
+
         fallback_response = generate_demo_response(clean_prompt, db)
         return {
             "success": True,
             "response": fallback_response,
             "is_demo": True,
-            "model": f"Demo Mode (API Fallback)",
+            "model": "Demo Mode (API Fallback)",
             "notice": f"Live Gemini API was unavailable ({error_msg[:120]}...). Served high-fidelity Demo Mode response."
         }

@@ -23,7 +23,7 @@
 
 ### 2. 🤖 Context-Aware AI Assistant & Demo Mode
 - **Dual Operating Modes:**
-  - **Live Gemini AI:** Powered by the official Google Gemini SDK (`google-genai`) with models like `gemini-2.5-flash`. The backend grounds the model with the user's real task list, overdue items, and habit streaks.
+  - **Live Gemini AI:** Powered by the official Google Gemini SDK (`google-genai`) with models like `gemini-3.8-flash`. The backend grounds the model with the user's real task list, overdue items, and habit streaks.
   - **Demo Mode (Simulated AI):** Zero-configuration fallback! If no `GEMINI_API_KEY` is present, the app automatically runs in a clearly labeled Demo Mode with deterministic, context-rich responses tailored to the user's data.
 - **Suggested Prompt Chips:**
   - *"Plan my day."*

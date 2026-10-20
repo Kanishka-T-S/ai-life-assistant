@@ -87,7 +87,7 @@ def get_dashboard_stats():
         "upcoming_tasks": upcoming_tasks,
         "ai_status": {
             "is_demo": not has_api_key,
-            "model": current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash") if has_api_key else "Demo Mode (Simulated)"
+            "model": current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash") if has_api_key else "Demo Mode (Simulated)"
         }
     }), 200
 
@@ -279,7 +279,7 @@ def chat():
 
     db = get_db()
     api_key = current_app.config.get("GEMINI_API_KEY", "")
-    model_name = current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model_name = current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash")
 
     result = chat_with_assistant(
         prompt=prompt,
