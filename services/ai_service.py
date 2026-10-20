@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 # Try importing the official Google GenAI SDK
 try:
     from google import genai
-    from google.genai import types
+    from google.genai import types, errors
     HAS_GENAI_SDK = True
 except ImportError:
     HAS_GENAI_SDK = False
@@ -18,52 +19,53 @@ except ImportError:
 
 def build_system_context(db) -> str:
     """
-    Assemble real database context (today's tasks, pending tasks, overdue tasks,
-    and active habits) to ground the AI's responses in user data.
+    Assemble a lightweight, minimal context containing only relevant pending tasks
+    and today's habit summary to minimize prompt token overhead and latency.
     """
-    today_str = date.today().strftime("%A, %B %d, %Y")
-    task_stats = get_task_stats(db)
-    habit_stats = get_habit_stats(db)
+    today_str = date.today().isoformat()
+    cursor = db.cursor()
 
-    pending_tasks = get_tasks(db, status_filter="pending", sort_by="priority_desc")
-    overdue_tasks = get_tasks(db, status_filter="overdue")
-    habits = get_habits(db)
+    # Fetch top pending tasks (limit to 5: prioritize overdue, today, High priority)
+    cursor.execute("""
+        SELECT title, priority, due_date, category
+        FROM tasks
+        WHERE is_completed = 0
+        ORDER BY
+            CASE WHEN due_date != '' AND due_date < ? THEN 0
+                 WHEN due_date = ? THEN 1
+                 WHEN priority = 'High' THEN 2
+                 WHEN priority = 'Medium' THEN 3
+                 ELSE 4 END ASC,
+            due_date ASC
+        LIMIT 5;
+    """, (today_str, today_str))
+    task_rows = cursor.fetchall()
 
-    task_summary_lines = []
-    for t in pending_tasks[:10]:
-        due = f", due: {t['due_date']}" if t['due_date'] else ""
-        task_summary_lines.append(f"- [{t['priority']}] {t['title']} ({t['category']}{due})")
+    tasks_context = []
+    for r in task_rows:
+        due = f" (due {r['due_date']})" if r["due_date"] else ""
+        tasks_context.append(f"- [{r['priority']}] {r['title']}{due}")
 
-    habit_summary_lines = []
-    for h in habits:
-        status = "Completed today" if h["is_completed_today"] else "Pending today"
-        habit_summary_lines.append(f"- {h['name']} ({status}, streak: {h['current_streak']} days)")
+    # Fetch today's habit status in a single query
+    cursor.execute("""
+        SELECT h.name,
+               CASE WHEN l.id IS NOT NULL THEN 1 ELSE 0 END as completed_today
+        FROM habits h
+        LEFT JOIN habit_logs l ON h.id = l.habit_id AND l.date = ?
+        LIMIT 5;
+    """, (today_str,))
+    habit_rows = cursor.fetchall()
 
-    overdue_count = len(overdue_tasks)
+    total_habits = len(habit_rows)
+    done_habits = sum(1 for h in habit_rows if h["completed_today"])
+    pending_habits = [h["name"] for h in habit_rows if not h["completed_today"]]
 
-    context = f"""
-Current Date: {today_str}
-Assistant Persona: AI Life Assistant – Your Smart Everyday Companion.
-Tone: Encouraging, concise, practical, structured, friendly.
+    habits_summary = f"{done_habits}/{total_habits} done today"
+    if pending_habits:
+        habits_summary += f" (pending: {', '.join(pending_habits[:3])})"
 
-User's Real Productivity Data:
-- Pending Tasks: {task_stats['pending']} (Overdue: {overdue_count}, High Priority: {task_stats['high_priority_pending']})
-- Tasks Due Today: {task_stats['today_total']} ({task_stats['today_completed']} completed)
-- Active Habits: {habit_stats['total']} ({habit_stats['completed_today']} completed today)
-
-Top Pending Tasks:
-{chr(10).join(task_summary_lines) if task_summary_lines else "No pending tasks."}
-
-Active Habits:
-{chr(10).join(habit_summary_lines) if habit_summary_lines else "No habits configured yet."}
-
-Important Rules:
-1. Always base daily plans and task recommendations on the user's actual tasks and habits listed above.
-2. AI-generated schedules and recommendations are suggestions for guidance, NOT calendar commitments.
-3. Never claim to automatically create, modify, or delete user tasks or habits without their explicit confirmation.
-4. Keep advice actionable and avoid overwhelming the user with long walls of text.
-"""
-    return context.strip()
+    task_str = "\n".join(tasks_context) if tasks_context else "None"
+    return f"Today: {today_str}\nPending Tasks:\n{task_str}\nHabits: {habits_summary}"
 
 
 def generate_demo_response(prompt: str, db) -> str:
@@ -218,14 +220,11 @@ def chat_with_assistant(
     db,
     session_history: Optional[List[Dict[str, str]]] = None,
     api_key: Optional[str] = None,
-    model_name: Optional[str] = None
+    model_name: Optional[str] = None,
+    timeout_seconds: Optional[int] = None
 ) -> Dict[str, Any]:
     """
-    Main conversational assistant handler.
-    1. If a valid Gemini API key is configured and SDK is present, calls the live Gemini API
-       with rich system instructions and real database context.
-    2. If no key is set or if an API error occurs, seamlessly provides a clearly labeled
-       Demo Mode response.
+    Main conversational assistant handler with latency measurement and fast timeout.
     """
     if not prompt or not isinstance(prompt, str) or not prompt.strip():
         return {
@@ -233,7 +232,8 @@ def chat_with_assistant(
             "error": "Message prompt cannot be empty.",
             "response": "",
             "is_demo": True,
-            "model": "None"
+            "model": "None",
+            "api_latency": 0.0
         }
 
     clean_prompt = prompt.strip()
@@ -250,39 +250,66 @@ def chat_with_assistant(
     else:
         effective_model = str(model_name).strip()
 
+    effective_timeout = timeout_seconds or int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "10"))
+
     if not effective_api_key or not HAS_GENAI_SDK:
         # Running in Demo Mode
+        t_demo_start = time.perf_counter()
         demo_text = generate_demo_response(clean_prompt, db)
+        demo_latency = time.perf_counter() - t_demo_start
         return {
             "success": True,
             "response": demo_text,
             "is_demo": True,
             "model": "Demo Mode (Simulated Assistant)",
+            "api_latency": round(demo_latency, 4),
             "notice": "Operating in Demo Mode. To connect live Gemini AI, set GEMINI_API_KEY in your .env file."
         }
 
-    # Live Gemini API execution
+    # Live Gemini API execution with latency timing and timeout limits
+    start_api = time.perf_counter()
     try:
         client = genai.Client(api_key=effective_api_key)
 
-        # Build prompt with system context and conversation context
-        full_prompt = f"{system_context}\n\nUser Question: {clean_prompt}"
+        system_instruction = (
+            "You are AI Life Assistant – a smart, practical everyday productivity companion. "
+            "Keep answers concise, direct, and actionable (maximum 2-3 short paragraphs or bullet points). "
+            "Ground recommendations in the user's provided tasks and habits. "
+            "Clarify that schedules are flexible suggestions."
+        )
 
-        # If previous history exists, format the last 2 turns
+        retry_options = types.HttpRetryOptions(attempts=1)
+        http_options = types.HttpOptions(
+            timeout=effective_timeout * 1000,
+            retry_options=retry_options
+        )
+
+        config = types.GenerateContentConfig(
+            max_output_tokens=300,
+            temperature=0.7,
+            system_instruction=f"{system_instruction}\n\n{system_context}",
+            http_options=http_options
+        )
+
+        # Include at most the last 2 turns of conversation history to prevent latency bloat
+        user_content = clean_prompt
         if session_history and isinstance(session_history, list):
-            history_snippets = []
-            for item in session_history[-4:]:
-                role = "User" if item.get("role") == "user" else "Assistant"
-                content = item.get("content", "")
-                history_snippets.append(f"{role}: {content}")
-            if history_snippets:
-                full_prompt = f"{system_context}\n\nRecent Conversation:\n{chr(10).join(history_snippets)}\n\nUser Question: {clean_prompt}"
+            recent_turns = []
+            for item in session_history[-2:]:
+                r = "User" if item.get("role") == "user" else "Assistant"
+                c = item.get("content", "").strip()
+                if c:
+                    recent_turns.append(f"{r}: {c[:200]}")
+            if recent_turns:
+                user_content = f"Recent History:\n{chr(10).join(recent_turns)}\n\nQuestion: {clean_prompt}"
 
         response = client.models.generate_content(
             model=effective_model,
-            contents=full_prompt,
+            contents=user_content,
+            config=config
         )
 
+        api_latency = time.perf_counter() - start_api
         reply_text = response.text if hasattr(response, "text") and response.text else "I was unable to generate a response. Please try again."
 
         return {
@@ -290,29 +317,46 @@ def chat_with_assistant(
             "response": reply_text,
             "is_demo": False,
             "model": effective_model,
+            "api_latency": round(api_latency, 3),
             "notice": None
         }
 
     except Exception as exc:
-        # Graceful fallback on API error (e.g. quota, high demand, offline)
+        api_latency = time.perf_counter() - start_api
         error_msg = str(exc)
         # Redact any accidental credential leak from error messages
         if effective_api_key and effective_api_key in error_msg:
             error_msg = error_msg.replace(effective_api_key, "[REDACTED_API_KEY]")
 
+        is_timeout = (
+            "timeout" in error_msg.lower()
+            or "deadline_exceeded" in error_msg.lower()
+            or "504" in error_msg
+            or isinstance(exc, (TimeoutError, errors.httpx.TimeoutException))
+        )
+
+        if is_timeout:
+            user_error = f"The AI request timed out after {effective_timeout}s. Google's servers may be experiencing high demand. Please try again."
+        elif "503" in error_msg or "unavailable" in error_msg.lower():
+            user_error = "The Gemini model is temporarily experiencing high demand upstream. Please try again in a few moments."
+        else:
+            user_error = f"Live Gemini AI encountered an error: {error_msg[:120]}."
+
         logger.warning(
-            "Gemini API call to model '%s' failed (%s: %s). Falling back to Demo Mode.",
+            "Gemini API call to model '%s' failed in %.2fs (%s: %s).",
             effective_model,
+            api_latency,
             type(exc).__name__,
             error_msg[:200]
         )
-        print(f"[Gemini API Warning] Model '{effective_model}' unavailable ({type(exc).__name__}: {error_msg[:120]}). Falling back to Demo Mode.")
+        print(f"[Gemini API Warning] Model '{effective_model}' failed in {api_latency:.2f}s ({type(exc).__name__}: {error_msg[:100]}).")
 
-        fallback_response = generate_demo_response(clean_prompt, db)
         return {
-            "success": True,
-            "response": fallback_response,
-            "is_demo": True,
-            "model": "Demo Mode (API Fallback)",
-            "notice": f"Live Gemini API was unavailable ({error_msg[:120]}...). Served high-fidelity Demo Mode response."
+            "success": False,
+            "error": user_error,
+            "is_timeout": is_timeout,
+            "is_demo": False,
+            "model": effective_model,
+            "api_latency": round(api_latency, 3),
+            "notice": f"Upstream error: {error_msg[:100]}"
         }

@@ -1,5 +1,9 @@
+import time
+import logging
 from datetime import date
 from flask import Blueprint, jsonify, request, current_app
+
+logger = logging.getLogger(__name__)
 from database import get_db
 from services.task_service import (
     create_task,
@@ -266,7 +270,8 @@ def get_planner_summary():
 # ==========================================
 @api_bp.route("/chat", methods=["POST"])
 def chat():
-    """Conversational AI assistant endpoint."""
+    """Conversational AI assistant endpoint with latency tracking and timeout handling."""
+    start_req = time.perf_counter()
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt")
     history = data.get("history", [])
@@ -280,13 +285,34 @@ def chat():
     db = get_db()
     api_key = current_app.config.get("GEMINI_API_KEY", "")
     model_name = current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash")
+    timeout_sec = current_app.config.get("GEMINI_TIMEOUT_SECONDS", 10)
 
     result = chat_with_assistant(
         prompt=prompt,
         db=db,
         session_history=history,
         api_key=api_key,
-        model_name=model_name
+        model_name=model_name,
+        timeout_seconds=timeout_sec
     )
+
+    total_latency = time.perf_counter() - start_req
+    api_latency = result.get("api_latency", 0.0)
+
+    # Log measured latency
+    print(f"[Latency] /api/chat total: {total_latency:.3f}s | Gemini API: {api_latency:.3f}s | Model: {result.get('model')}")
+    logger.info(
+        "/api/chat total: %.3fs | Gemini API: %.3fs | Model: %s",
+        total_latency, api_latency, result.get("model")
+    )
+
+    result["timing"] = {
+        "api_latency_sec": round(api_latency, 3),
+        "total_latency_sec": round(total_latency, 3)
+    }
+
+    if not result.get("success"):
+        status_code = 504 if result.get("is_timeout") else 503 if not result.get("is_demo") else 400
+        return jsonify(result), status_code
 
     return jsonify(result), 200

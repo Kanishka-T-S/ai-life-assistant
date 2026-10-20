@@ -72,3 +72,53 @@ def test_daily_planner_summary_endpoint(client):
     assert "disclaimer" in data
     assert len(data["today_tasks"]) == 1
     assert data["today_tasks"][0]["title"] == "Today Urgent Task"
+
+
+def test_ai_chat_timing_included(client):
+    """Test that timing metadata is included in chat responses."""
+    response = client.post("/api/chat", json={"prompt": "Plan my day."})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert "timing" in data
+    assert "api_latency_sec" in data["timing"]
+    assert "total_latency_sec" in data["timing"]
+    assert isinstance(data["timing"]["total_latency_sec"], (int, float))
+
+
+def test_ai_chat_timeout_handling(app):
+    """Test graceful handling of upstream timeouts without fake live responses."""
+    from unittest.mock import patch
+    with app.test_client() as client:
+        with patch("services.ai_service.genai.Client") as mock_genai:
+            mock_instance = mock_genai.return_value
+            mock_instance.models.generate_content.side_effect = TimeoutError("Deadline exceeded")
+
+            app.config["GEMINI_API_KEY"] = "test_key_for_timeout"
+            try:
+                res = client.post("/api/chat", json={"prompt": "Test timeout"})
+                assert res.status_code == 504
+                data = res.get_json()
+                assert data["success"] is False
+                assert data["is_timeout"] is True
+                assert "timed out" in data["error"].lower()
+            finally:
+                app.config["GEMINI_API_KEY"] = ""
+
+
+def test_ai_chat_upstream_error_handling(app):
+    """Test graceful handling of upstream API errors without fake live responses."""
+    from unittest.mock import patch
+    with app.test_client() as client:
+        with patch("services.ai_service.genai.Client") as mock_genai:
+            mock_instance = mock_genai.return_value
+            mock_instance.models.generate_content.side_effect = Exception("503 UNAVAILABLE: high demand")
+
+            app.config["GEMINI_API_KEY"] = "test_key_for_error"
+            try:
+                res = client.post("/api/chat", json={"prompt": "Test 503 error"})
+                assert res.status_code == 503
+                data = res.get_json()
+                assert data["success"] is False
+                assert "high demand" in data["error"].lower() or "error" in data["error"].lower()
+            finally:
+                app.config["GEMINI_API_KEY"] = ""

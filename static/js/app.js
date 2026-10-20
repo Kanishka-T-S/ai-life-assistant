@@ -872,15 +872,32 @@ document.addEventListener("DOMContentLoaded", () => {
     const prompt = (promptText || chatInputEl.value).trim();
     if (!prompt || state.isChatWaiting) return;
 
+    // Immediately set flight lock and clear input to prevent duplicate submission
+    state.isChatWaiting = true;
     chatInputEl.value = "";
     chatInputEl.style.height = "auto";
+
+    // Disable input controls and prompt chips during request
+    if (sendChatBtn) {
+      sendChatBtn.disabled = true;
+      sendChatBtn.style.opacity = "0.6";
+      sendChatBtn.style.cursor = "not-allowed";
+    }
+    if (chatInputEl) {
+      chatInputEl.disabled = true;
+      chatInputEl.placeholder = "AI assistant is thinking...";
+    }
+    promptChips.forEach((chip) => {
+      chip.disabled = true;
+      chip.style.pointerEvents = "none";
+      chip.style.opacity = "0.5";
+    });
 
     // Append user message bubble
     appendChatBubble("user", prompt);
     state.chatHistory.push({ role: "user", content: prompt });
 
     // Show typing indicator
-    state.isChatWaiting = true;
     showTypingIndicator();
 
     try {
@@ -889,29 +906,48 @@ document.addEventListener("DOMContentLoaded", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: prompt,
-          history: state.chatHistory.slice(-4)
+          history: state.chatHistory.slice(-2) // Compact history (last turn) to reduce latency
         })
       });
 
       const data = await res.json();
-      removeTypingIndicator();
-      state.isChatWaiting = false;
 
       if (!data.success) {
-        appendChatBubble("assistant", `⚠️ Error: ${data.error || "Unable to generate response."}`);
+        const errorMsg = data.error || "Unable to generate response. Please try again.";
+        appendChatBubble("assistant", `⚠️ **Notice:** ${errorMsg}`, false, data.notice);
+        showToast(errorMsg, "error");
         return;
       }
 
       state.chatHistory.push({ role: "assistant", content: data.response });
-      appendChatBubble("assistant", data.response, data.is_demo, data.notice);
+      appendChatBubble("assistant", data.response, data.is_demo, data.notice, data.timing);
     } catch (err) {
+      appendChatBubble("assistant", "⚠️ Connection error or request timeout. Please ensure the server is running and try again.");
+      showToast("Chat request failed. Please check your connection.", "error");
+    } finally {
+      // Always unlock and re-enable inputs
       removeTypingIndicator();
       state.isChatWaiting = false;
-      appendChatBubble("assistant", "⚠️ Connection error. Please ensure the server is running and try again.");
+
+      if (sendChatBtn) {
+        sendChatBtn.disabled = false;
+        sendChatBtn.style.opacity = "";
+        sendChatBtn.style.cursor = "";
+      }
+      if (chatInputEl) {
+        chatInputEl.disabled = false;
+        chatInputEl.placeholder = "Ask anything or request assistance (Press Enter to send, Shift+Enter for new line)...";
+        chatInputEl.focus();
+      }
+      promptChips.forEach((chip) => {
+        chip.disabled = false;
+        chip.style.pointerEvents = "";
+        chip.style.opacity = "";
+      });
     }
   }
 
-  function appendChatBubble(role, text, isDemo = false, notice = null) {
+  function appendChatBubble(role, text, isDemo = false, notice = null, timing = null) {
     if (!chatMessagesEl) return;
 
     const bubble = document.createElement("div");
@@ -922,12 +958,16 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       bubble.innerHTML = formatMarkdown(text);
 
+      const metaDiv = document.createElement("div");
+      metaDiv.className = "chat-bubble-meta";
+
       if (isDemo) {
-        const metaDiv = document.createElement("div");
-        metaDiv.className = "chat-bubble-meta";
         metaDiv.innerHTML = `<span class="demo-mode-tag">🤖 Demo Mode (Simulated AI)</span>`;
-        bubble.appendChild(metaDiv);
+      } else {
+        const latencyStr = timing && timing.total_latency_sec ? ` • ⚡ ${timing.total_latency_sec}s` : "";
+        metaDiv.innerHTML = `<span style="color: var(--accent-cyan); font-weight: 500;">⚡ Gemini AI${latencyStr}</span>`;
       }
+      bubble.appendChild(metaDiv);
 
       if (notice) {
         const noticeDiv = document.createElement("div");

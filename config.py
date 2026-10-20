@@ -15,6 +15,7 @@ class Config:
     DATABASE_PATH = os.environ.get("DATABASE_PATH", str(BASE_DIR / "assistant.db"))
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
     GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    GEMINI_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "10"))
     DEBUG = os.environ.get("FLASK_DEBUG", "0") == "1"
     TESTING = False
 
@@ -25,3 +26,4 @@ class TestConfig(Config):
     DEBUG = False
     DATABASE_PATH = ":memory:"
     GEMINI_API_KEY = ""
+    GEMINI_TIMEOUT_SECONDS = 5
