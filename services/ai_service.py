@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import logging
 from datetime import date
@@ -14,7 +15,105 @@ try:
     from google.genai import types, errors
     HAS_GENAI_SDK = True
 except ImportError:
+    genai = None
+    types = None
+    errors = None
     HAS_GENAI_SDK = False
+
+# ==========================================
+# QUOTA & RATE LIMIT CONFIGURATION & STATE
+# ==========================================
+QUOTA_FRIENDLY_MESSAGE = (
+    "Live AI is temporarily unavailable because the API quota has been reached. "
+    "You can still use Tasks and Habits."
+)
+DEFAULT_QUOTA_COOLDOWN_SECONDS = 60
+
+_quota_exhausted_until: float = 0.0
+_quota_exhaustion_reason: str = ""
+
+
+def is_quota_exhausted() -> bool:
+    """Return True if the Gemini API quota is currently marked as exhausted."""
+    return time.time() < _quota_exhausted_until
+
+
+def set_quota_exhausted(cooldown_seconds: int = DEFAULT_QUOTA_COOLDOWN_SECONDS, reason: str = "") -> None:
+    """Mark the Gemini API quota as exhausted for a given cooldown window."""
+    global _quota_exhausted_until, _quota_exhaustion_reason
+    _quota_exhausted_until = time.time() + max(1, cooldown_seconds)
+    _quota_exhaustion_reason = reason or "429 RESOURCE_EXHAUSTED"
+
+
+def reset_quota_state() -> None:
+    """Reset the quota exhaustion state (used for recovery and automated testing)."""
+    global _quota_exhausted_until, _quota_exhaustion_reason
+    _quota_exhausted_until = 0.0
+    _quota_exhaustion_reason = ""
+
+
+def get_quota_remaining_cooldown() -> int:
+    """Return remaining cooldown in seconds, or 0 if quota is available."""
+    remaining = _quota_exhausted_until - time.time()
+    return max(0, int(remaining))
+
+
+def is_quota_or_rate_limit_error(exc: Exception) -> bool:
+    """
+    Detect whether an exception or error represents a 429 RESOURCE_EXHAUSTED
+    or quota/rate-limit error from the Gemini API.
+    """
+    if exc is None:
+        return False
+
+    # Check status code or code attribute on exception
+    code = getattr(exc, "code", None)
+    if code == 429:
+        return True
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 429:
+        return True
+
+    # Check google.genai ClientError / APIError specifics if available
+    if HAS_GENAI_SDK and errors is not None:
+        try:
+            if isinstance(exc, (errors.APIError, errors.ClientError)):
+                if getattr(exc, "code", None) == 429:
+                    return True
+        except Exception:
+            pass
+
+    # Inspect string representations
+    msg = str(exc)
+    msg_upper = msg.upper()
+    msg_lower = msg.lower()
+
+    if "RESOURCE_EXHAUSTED" in msg_upper:
+        return True
+    if "429" in msg:
+        return True
+    if "QUOTA" in msg_upper and any(word in msg_lower for word in ["exceeded", "exhausted", "reached", "limit"]):
+        return True
+    if "RATE LIMIT" in msg_upper or "RATELIMIT" in msg_upper or "TOO MANY REQUESTS" in msg_upper:
+        return True
+
+    return False
+
+
+def sanitize_error_message(error_str: str, api_key: Optional[str] = None) -> str:
+    """
+    Redact any accidental credential leaks from error messages or logs.
+    Never exposes raw API keys.
+    """
+    if not error_str:
+        return ""
+    sanitized = str(error_str)
+    if api_key and api_key.strip():
+        sanitized = sanitized.replace(api_key.strip(), "[REDACTED_API_KEY]")
+    # Redact typical Google API key pattern (AIzaSy...)
+    sanitized = re.sub(r"AIza[0-9A-Za-z\-_]{35}", "[REDACTED_API_KEY]", sanitized)
+    return sanitized
+
 
 
 def build_system_context(db) -> str:
@@ -221,10 +320,13 @@ def chat_with_assistant(
     session_history: Optional[List[Dict[str, str]]] = None,
     api_key: Optional[str] = None,
     model_name: Optional[str] = None,
-    timeout_seconds: Optional[int] = None
+    timeout_seconds: Optional[int] = None,
+    fallback_to_demo: bool = False,
+    cooldown_seconds: Optional[int] = None
 ) -> Dict[str, Any]:
     """
-    Main conversational assistant handler with latency measurement and fast timeout.
+    Main conversational assistant handler with latency measurement, fast timeout,
+    and graceful handling of 429 RESOURCE_EXHAUSTED quota and rate limit errors.
     """
     if not prompt or not isinstance(prompt, str) or not prompt.strip():
         return {
@@ -232,6 +334,7 @@ def chat_with_assistant(
             "error": "Message prompt cannot be empty.",
             "response": "",
             "is_demo": True,
+            "is_quota_fallback": False,
             "model": "None",
             "api_latency": 0.0
         }
@@ -252,8 +355,8 @@ def chat_with_assistant(
 
     effective_timeout = timeout_seconds or int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "10"))
 
+    # Standard Demo Mode when no API key configured
     if not effective_api_key or not HAS_GENAI_SDK:
-        # Running in Demo Mode
         t_demo_start = time.perf_counter()
         demo_text = generate_demo_response(clean_prompt, db)
         demo_latency = time.perf_counter() - t_demo_start
@@ -261,10 +364,41 @@ def chat_with_assistant(
             "success": True,
             "response": demo_text,
             "is_demo": True,
+            "is_quota_fallback": False,
             "model": "Demo Mode (Simulated Assistant)",
             "api_latency": round(demo_latency, 4),
             "notice": "Operating in Demo Mode. To connect live Gemini AI, set GEMINI_API_KEY in your .env file."
         }
+
+    # Avoid repeatedly retrying requests when the quota is known to be exhausted
+    if is_quota_exhausted():
+        logger.info("Skipping live Gemini API call: quota cooldown active (%ds remaining).", get_quota_remaining_cooldown())
+        if fallback_to_demo:
+            t_demo_start = time.perf_counter()
+            demo_text = generate_demo_response(clean_prompt, db)
+            demo_latency = time.perf_counter() - t_demo_start
+            return {
+                "success": True,
+                "response": demo_text,
+                "is_demo": True,
+                "is_quota_fallback": True,
+                "model": "Demo Mode (Simulated Assistant - Quota Fallback)",
+                "api_latency": round(demo_latency, 4),
+                "notice": QUOTA_FRIENDLY_MESSAGE
+            }
+        else:
+            return {
+                "success": False,
+                "error": QUOTA_FRIENDLY_MESSAGE,
+                "is_quota_exhausted": True,
+                "cooldown_remaining": get_quota_remaining_cooldown(),
+                "fallback_available": True,
+                "is_demo": False,
+                "is_quota_fallback": False,
+                "model": effective_model,
+                "api_latency": 0.0,
+                "notice": "Live AI request paused because API quota was reached. Demo Mode is available as a simulated fallback."
+            }
 
     # Live Gemini API execution with latency timing and timeout limits
     start_api = time.perf_counter()
@@ -316,6 +450,7 @@ def chat_with_assistant(
             "success": True,
             "response": reply_text,
             "is_demo": False,
+            "is_quota_fallback": False,
             "model": effective_model,
             "api_latency": round(api_latency, 3),
             "notice": None
@@ -323,22 +458,91 @@ def chat_with_assistant(
 
     except Exception as exc:
         api_latency = time.perf_counter() - start_api
-        error_msg = str(exc)
-        # Redact any accidental credential leak from error messages
-        if effective_api_key and effective_api_key in error_msg:
-            error_msg = error_msg.replace(effective_api_key, "[REDACTED_API_KEY]")
+        error_msg = sanitize_error_message(str(exc), effective_api_key)
 
+        # 1. Detect quota exhaustion / rate limits (429 RESOURCE_EXHAUSTED)
+        if is_quota_or_rate_limit_error(exc):
+            effective_cooldown = cooldown_seconds or DEFAULT_QUOTA_COOLDOWN_SECONDS
+            set_quota_exhausted(effective_cooldown, reason=error_msg[:120])
+            logger.warning(
+                "Gemini API quota exhausted (429 RESOURCE_EXHAUSTED) in %.2fs. Entering %ds cooldown. (%s)",
+                api_latency,
+                effective_cooldown,
+                error_msg[:120]
+            )
+
+            if fallback_to_demo:
+                t_demo_start = time.perf_counter()
+                demo_text = generate_demo_response(clean_prompt, db)
+                demo_latency = time.perf_counter() - t_demo_start
+                return {
+                    "success": True,
+                    "response": demo_text,
+                    "is_demo": True,
+                    "is_quota_fallback": True,
+                    "model": "Demo Mode (Simulated Assistant - Quota Fallback)",
+                    "api_latency": round(demo_latency, 4),
+                    "notice": QUOTA_FRIENDLY_MESSAGE
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": QUOTA_FRIENDLY_MESSAGE,
+                    "is_quota_exhausted": True,
+                    "cooldown_remaining": get_quota_remaining_cooldown(),
+                    "fallback_available": True,
+                    "is_demo": False,
+                    "is_quota_fallback": False,
+                    "model": effective_model,
+                    "api_latency": round(api_latency, 3),
+                    "notice": "Live AI quota reached. Demo Mode can be used explicitly as a simulated fallback."
+                }
+
+
+        # 2. Check for timeouts
         is_timeout = (
             "timeout" in error_msg.lower()
             or "deadline_exceeded" in error_msg.lower()
             or "504" in error_msg
-            or isinstance(exc, (TimeoutError, errors.httpx.TimeoutException))
+            or (
+                errors is not None
+                and hasattr(errors, "httpx")
+                and isinstance(
+                    exc, (TimeoutError, errors.httpx.TimeoutException)
+                )
+            )
+            or isinstance(exc, TimeoutError)
         )
 
-        if is_timeout:
-            user_error = f"The AI request timed out after {effective_timeout}s. Google's servers may be experiencing high demand. Please try again."
+        if is_timeout and fallback_to_demo:
+            t_demo_start = time.perf_counter()
+            demo_text = generate_demo_response(clean_prompt, db)
+            demo_latency = time.perf_counter() - t_demo_start
+
+            return {
+                "success": True,
+                "response": demo_text,
+                "is_demo": True,
+                "is_quota_fallback": False,
+                "is_timeout_fallback": True,
+                "model": "Demo Mode (Simulated Assistant - Timeout Fallback)",
+                "api_latency": round(demo_latency, 4),
+                "notice": (
+                    f"Live Gemini AI timed out after {effective_timeout}s. "
+                    "This response is simulated Demo Mode output."
+                )
+            }
+
+        elif is_timeout:
+            user_error = (
+                f"The AI request timed out after {effective_timeout}s. "
+                "Google's servers may be experiencing high demand. Please try again."
+            )
         elif "503" in error_msg or "unavailable" in error_msg.lower():
-            user_error = "The Gemini model is temporarily experiencing high demand upstream. Please try again in a few moments."
+            user_error = (
+                "The Gemini model is temporarily experiencing high demand upstream. "
+                "Please try again in a few moments."
+            )
         else:
             user_error = f"Live Gemini AI encountered an error: {error_msg[:120]}."
 
@@ -349,13 +553,14 @@ def chat_with_assistant(
             type(exc).__name__,
             error_msg[:200]
         )
-        print(f"[Gemini API Warning] Model '{effective_model}' failed in {api_latency:.2f}s ({type(exc).__name__}: {error_msg[:100]}).")
 
         return {
             "success": False,
             "error": user_error,
             "is_timeout": is_timeout,
+            "is_quota_exhausted": False,
             "is_demo": False,
+            "is_quota_fallback": False,
             "model": effective_model,
             "api_latency": round(api_latency, 3),
             "notice": f"Upstream error: {error_msg[:100]}"

@@ -4,7 +4,7 @@
 [![Flask](https://img.shields.io/badge/Flask-3.1-black.svg?logo=flask)](https://flask.palletsprojects.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57.svg?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-API_Enabled-4285F4.svg?logo=google&logoColor=white)](https://aistudio.google.com/)
-[![Pytest](https://img.shields.io/badge/Tests-18_Passed-success.svg?logo=pytest)](https://pytest.org/)
+[![Pytest](https://img.shields.io/badge/Tests-28_Passed-success.svg?logo=pytest)](https://pytest.org/)
 
 **AI Life Assistant** is an intelligent, full-stack personal productivity dashboard and conversational companion. Built for the **Amazon Developer Hackathon (Alexa+ Simulated Experience Track)**, it provides an original, simulated conversational intelligence experience that helps users seamlessly organize daily commitments, cultivate long-term habits, plan focus schedules, and receive context-aware productivity coaching.
 
@@ -21,10 +21,11 @@
 - **Quick-Action Strip:** One-click shortcuts to add tasks, log habits, or chat with the AI assistant.
 - **Upcoming Tasks Feed:** Quick view of the next pending deadlines with inline completion checkboxes.
 
-### 2. 🤖 Context-Aware AI Assistant & Demo Mode
-- **Dual Operating Modes:**
+### 2. 🤖 Context-Aware AI Assistant & Graceful Quota Handling
+- **Dual Operating Modes & Graceful Fallback:**
   - **Live Gemini AI:** Powered by the official Google Gemini SDK (`google-genai`) with models like `gemini-3.8-flash`. The backend grounds the model with the user's real task list, overdue items, and habit streaks.
-  - **Demo Mode (Simulated AI):** Zero-configuration fallback! If no `GEMINI_API_KEY` is present, the app automatically runs in a clearly labeled Demo Mode with deterministic, context-rich responses tailored to the user's data.
+  - **Graceful Quota Handling (429 RESOURCE_EXHAUSTED):** Detects rate limits and quota exhaustion, avoids repeatedly retrying failed upstream requests with an active circuit-breaker cooldown window, shows friendly messaging, and never leaks API keys.
+  - **Simulated Demo Mode Fallback:** If quota is exhausted or if no `GEMINI_API_KEY` is configured, users can explicitly continue in Demo Mode—clearly labeled as simulated—without disruption to tasks, habits, or planner views.
 - **Suggested Prompt Chips:**
   - *"Plan my day."*
   - *"Help me prioritize my tasks."*

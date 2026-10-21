@@ -220,6 +220,33 @@ body {
   color: #34d399;
 }
 
+.ai-status-pill.quota {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.quota-fallback-box {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-md);
+}
+
+.quota-fallback-box p {
+  font-size: 0.85rem;
+  color: #fcd34d;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.quota-fallback-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

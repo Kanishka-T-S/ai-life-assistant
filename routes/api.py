@@ -23,7 +23,12 @@ from services.habit_service import (
     toggle_habit_completion,
     get_habit_stats
 )
-from services.ai_service import chat_with_assistant
+from services.ai_service import (
+    chat_with_assistant,
+    is_quota_exhausted,
+    reset_quota_state,
+    get_quota_remaining_cooldown
+)
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -75,8 +80,16 @@ def get_dashboard_stats():
     # Fetch next 5 upcoming pending tasks
     upcoming_tasks = get_tasks(db, status_filter="pending", sort_by="due_date_asc")[:5]
 
-    # Check whether Gemini key is set
+    # Check whether Gemini key is set and quota status
     has_api_key = bool(current_app.config.get("GEMINI_API_KEY", "").strip())
+    quota_exhausted = is_quota_exhausted()
+
+    if not has_api_key:
+        ai_model_desc = "Demo Mode (Simulated)"
+    elif quota_exhausted:
+        ai_model_desc = "Quota Reached (Demo Fallback Available)"
+    else:
+        ai_model_desc = current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash")
 
     return jsonify({
         "success": True,
@@ -91,7 +104,9 @@ def get_dashboard_stats():
         "upcoming_tasks": upcoming_tasks,
         "ai_status": {
             "is_demo": not has_api_key,
-            "model": current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash") if has_api_key else "Demo Mode (Simulated)"
+            "quota_exhausted": quota_exhausted,
+            "cooldown_remaining_sec": get_quota_remaining_cooldown(),
+            "model": ai_model_desc
         }
     }), 200
 
@@ -270,11 +285,14 @@ def get_planner_summary():
 # ==========================================
 @api_bp.route("/chat", methods=["POST"])
 def chat():
-    """Conversational AI assistant endpoint with latency tracking and timeout handling."""
+    """Conversational AI assistant endpoint with latency tracking and quota/rate-limit handling."""
     start_req = time.perf_counter()
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt")
     history = data.get("history", [])
+    fallback_to_demo = bool(
+        data.get("fallback_to_demo") or data.get("use_demo") or data.get("allow_demo_fallback")
+    )
 
     if not prompt or not isinstance(prompt, str) or not prompt.strip():
         return jsonify({"success": False, "error": "Message prompt is required."}), 400
@@ -293,7 +311,8 @@ def chat():
         session_history=history,
         api_key=api_key,
         model_name=model_name,
-        timeout_seconds=timeout_sec
+        timeout_seconds=timeout_sec,
+        fallback_to_demo=fallback_to_demo
     )
 
     total_latency = time.perf_counter() - start_req
@@ -312,7 +331,38 @@ def chat():
     }
 
     if not result.get("success"):
-        status_code = 504 if result.get("is_timeout") else 503 if not result.get("is_demo") else 400
+        if result.get("is_quota_exhausted"):
+            status_code = 429
+        elif result.get("is_timeout"):
+            status_code = 504
+        elif not result.get("is_demo"):
+            status_code = 503
+        else:
+            status_code = 400
         return jsonify(result), status_code
 
     return jsonify(result), 200
+
+
+@api_bp.route("/ai/status", methods=["GET"])
+def get_ai_status():
+    """Return status of live Gemini integration and quota state."""
+    has_api_key = bool(current_app.config.get("GEMINI_API_KEY", "").strip())
+    quota_exhausted = is_quota_exhausted()
+    return jsonify({
+        "success": True,
+        "has_api_key": has_api_key,
+        "is_quota_exhausted": quota_exhausted,
+        "cooldown_remaining_sec": get_quota_remaining_cooldown(),
+        "model": current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash")
+    }), 200
+
+
+@api_bp.route("/ai/reset-quota", methods=["POST"])
+def reset_quota():
+    """Admin/testing endpoint to reset quota cooldown."""
+    reset_quota_state()
+    return jsonify({
+        "success": True,
+        "message": "AI quota cooldown has been reset."
+    }), 200

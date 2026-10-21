@@ -21,7 +21,10 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     chatHistory: [],
     isChatWaiting: false,
-    aiStatus: { is_demo: true, model: "Demo Mode" }
+    lastPrompt: "",
+    demoFallbackActive: false,
+    isQuotaExhausted: false,
+    aiStatus: { is_demo: true, quota_exhausted: false, model: "Demo Mode" }
   };
 
   // ==========================================
@@ -289,22 +292,38 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function updateAiStatusBadges() {
-    const isLive = !state.aiStatus.is_demo;
-    const statusHtml = isLive
-      ? `<span class="status-dot"></span> <span>Live Gemini AI</span>`
-      : `<span class="status-dot"></span> <span>Demo Mode (Simulated AI)</span>`;
+    const isQuotaExhausted = Boolean(state.isQuotaExhausted || state.aiStatus?.quota_exhausted);
+    const isLive = !state.aiStatus?.is_demo;
 
     if (sidebarAiStatus) {
-      sidebarAiStatus.className = `ai-status-pill ${isLive ? "live" : ""}`;
-      sidebarAiStatus.innerHTML = statusHtml;
-      sidebarAiStatus.title = isLive
-        ? "Connected to live Gemini API"
-        : "Running in Demo Mode. Add GEMINI_API_KEY in .env for live Gemini AI.";
+      if (isQuotaExhausted) {
+        sidebarAiStatus.className = "ai-status-pill quota";
+        sidebarAiStatus.innerHTML = `<span class="status-dot"></span> <span>AI Quota Reached (Demo Available)</span>`;
+        sidebarAiStatus.title = "Live AI quota reached. You can still use Tasks and Habits, or switch to simulated Demo Mode.";
+      } else if (isLive) {
+        sidebarAiStatus.className = "ai-status-pill live";
+        sidebarAiStatus.innerHTML = `<span class="status-dot"></span> <span>Live Gemini AI</span>`;
+        sidebarAiStatus.title = "Connected to live Gemini API";
+      } else {
+        sidebarAiStatus.className = "ai-status-pill";
+        sidebarAiStatus.innerHTML = `<span class="status-dot"></span> <span>Demo Mode (Simulated AI)</span>`;
+        sidebarAiStatus.title = "Running in Demo Mode. Add GEMINI_API_KEY in .env for live Gemini AI.";
+      }
     }
 
     if (chatAiBadge) {
-      chatAiBadge.className = `badge ${isLive ? "badge-priority-Low" : "badge-priority-Medium"}`;
-      chatAiBadge.textContent = isLive ? "⚡ Live Gemini AI" : "🤖 Demo Mode (Simulated)";
+      if (isQuotaExhausted) {
+        chatAiBadge.className = "badge badge-priority-High";
+        chatAiBadge.textContent = state.demoFallbackActive
+          ? "🤖 Demo Mode (Simulated AI - Quota Fallback)"
+          : "⚠️ Live AI Quota Reached";
+      } else if (isLive) {
+        chatAiBadge.className = "badge badge-priority-Low";
+        chatAiBadge.textContent = "⚡ Live Gemini AI";
+      } else {
+        chatAiBadge.className = "badge badge-priority-Medium";
+        chatAiBadge.textContent = "🤖 Demo Mode (Simulated)";
+      }
     }
   }
 
@@ -868,9 +887,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // API INTEGRATION: AI CHAT ASSISTANT
   // ==========================================
-  async function sendChatMessage(promptText) {
+  async function sendChatMessage(promptText, useDemoFallback = false) {
     const prompt = (promptText || chatInputEl.value).trim();
     if (!prompt || state.isChatWaiting) return;
+
+    state.lastPrompt = prompt;
+    if (useDemoFallback) {
+      state.demoFallbackActive = true;
+    }
 
     // Immediately set flight lock and clear input to prevent duplicate submission
     state.isChatWaiting = true;
@@ -893,34 +917,55 @@ document.addEventListener("DOMContentLoaded", () => {
       chip.style.opacity = "0.5";
     });
 
-    // Append user message bubble
-    appendChatBubble("user", prompt);
-    state.chatHistory.push({ role: "user", content: prompt });
+    // Append user message bubble if not already present
+    const lastHistory = state.chatHistory[state.chatHistory.length - 1];
+    if (!lastHistory || lastHistory.role !== "user" || lastHistory.content !== prompt) {
+      appendChatBubble("user", prompt);
+      state.chatHistory.push({ role: "user", content: prompt });
+    }
 
     // Show typing indicator
     showTypingIndicator();
 
     try {
+      const requestFallback = Boolean(state.demoFallbackActive || useDemoFallback);
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: prompt,
-          history: state.chatHistory.slice(-2) // Compact history (last turn) to reduce latency
+          history: state.chatHistory.slice(-2), // Compact history (last turn) to reduce latency
+          fallback_to_demo: requestFallback
         })
       });
 
       const data = await res.json();
 
       if (!data.success) {
-        const errorMsg = data.error || "Unable to generate response. Please try again.";
-        appendChatBubble("assistant", `⚠️ **Notice:** ${errorMsg}`, false, data.notice);
-        showToast(errorMsg, "error");
+        const isQuota = data.is_quota_exhausted || res.status === 429;
+        if (isQuota) {
+          state.isQuotaExhausted = true;
+          updateAiStatusBadges();
+
+          const friendlyMsg = data.error || "Live AI is temporarily unavailable because the API quota has been reached. You can still use Tasks and Habits.";
+          appendQuotaErrorBubble(friendlyMsg);
+          showToast(friendlyMsg, "error");
+        } else {
+          const errorMsg = data.error || "Unable to generate response. Please try again.";
+          appendChatBubble("assistant", `⚠️ **Notice:** ${errorMsg}`, false, data.notice);
+          showToast(errorMsg, "error");
+        }
         return;
       }
 
+      if (data.is_quota_fallback) {
+        state.isQuotaExhausted = true;
+        state.demoFallbackActive = true;
+        updateAiStatusBadges();
+      }
+
       state.chatHistory.push({ role: "assistant", content: data.response });
-      appendChatBubble("assistant", data.response, data.is_demo, data.notice, data.timing);
+      appendChatBubble("assistant", data.response, data.is_demo, data.notice, data.timing, data.is_quota_fallback);
     } catch (err) {
       appendChatBubble("assistant", "⚠️ Connection error or request timeout. Please ensure the server is running and try again.");
       showToast("Chat request failed. Please check your connection.", "error");
@@ -947,7 +992,38 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function appendChatBubble(role, text, isDemo = false, notice = null, timing = null) {
+  function appendQuotaErrorBubble(message) {
+    if (!chatMessagesEl) return;
+
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble assistant";
+
+    bubble.innerHTML = `
+      <div style="color: #f87171; font-weight: 600; margin-bottom: 6px;">
+        ⚠️ Live AI Quota Limit Reached
+      </div>
+      <div>${escapeHtml(message)}</div>
+      <div class="quota-fallback-box">
+        <p>You can seamlessly answer this question using the simulated <strong>Demo Mode</strong> fallback.</p>
+        <div class="quota-fallback-actions">
+          <button class="btn btn-secondary btn-sm" onclick="window.useDemoFallback()" style="background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
+            🤖 Answer with Simulated Demo Mode
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="window.switchTab('tasks')">
+            📋 Manage Tasks
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="window.switchTab('habits')">
+            🔥 Track Habits
+          </button>
+        </div>
+      </div>
+    `;
+
+    chatMessagesEl.appendChild(bubble);
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  function appendChatBubble(role, text, isDemo = false, notice = null, timing = null, isQuotaFallback = false) {
     if (!chatMessagesEl) return;
 
     const bubble = document.createElement("div");
@@ -961,7 +1037,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const metaDiv = document.createElement("div");
       metaDiv.className = "chat-bubble-meta";
 
-      if (isDemo) {
+      if (isQuotaFallback) {
+        metaDiv.innerHTML = `<span class="demo-mode-tag" style="color: #fbbf24;">🤖 Demo Mode (Simulated AI - Quota Fallback)</span>`;
+      } else if (isDemo) {
         metaDiv.innerHTML = `<span class="demo-mode-tag">🤖 Demo Mode (Simulated AI)</span>`;
       } else {
         const latencyStr = timing && timing.total_latency_sec ? ` • ⚡ ${timing.total_latency_sec}s` : "";
@@ -1077,6 +1155,33 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".modal-backdrop.open").forEach(closeModal);
     }
   });
+
+  // ==========================================
+  // GLOBAL WINDOW EXPOSURES FOR FALLBACKS
+  // ==========================================
+  window.useDemoFallback = function() {
+    state.demoFallbackActive = true;
+    updateAiStatusBadges();
+    showToast("Switched to Simulated Demo Mode fallback.", "info");
+    if (state.lastPrompt) {
+      sendChatMessage(state.lastPrompt, true);
+    }
+  };
+
+  window.retryLiveAi = async function() {
+    try {
+      await fetch("/api/ai/reset-quota", { method: "POST" });
+    } catch (e) {}
+    state.demoFallbackActive = false;
+    state.isQuotaExhausted = false;
+    updateAiStatusBadges();
+    showToast("Live AI retry requested.", "info");
+    if (state.lastPrompt) {
+      sendChatMessage(state.lastPrompt, false);
+    }
+  };
+
+  window.switchTab = switchTab;
 
   // ==========================================
   // INITIALIZATION
