@@ -14,8 +14,8 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-ai-life-assistant-2026")
     DATABASE_PATH = os.environ.get("DATABASE_PATH", str(BASE_DIR / "assistant.db"))
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
-    GEMINI_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "10"))
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
+    GEMINI_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "15"))
     DEBUG = os.environ.get("FLASK_DEBUG", "0") == "1"
     TESTING = False
 

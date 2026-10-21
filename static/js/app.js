@@ -894,6 +894,8 @@ document.addEventListener("DOMContentLoaded", () => {
     state.lastPrompt = prompt;
     if (useDemoFallback) {
       state.demoFallbackActive = true;
+    } else if (!state.isQuotaExhausted) {
+      state.demoFallbackActive = false;
     }
 
     // Immediately set flight lock and clear input to prevent duplicate submission
@@ -943,6 +945,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!data.success) {
         const isQuota = data.is_quota_exhausted || res.status === 429;
+        const isTimeout = data.is_timeout || res.status === 504;
         if (isQuota) {
           state.isQuotaExhausted = true;
           updateAiStatusBadges();
@@ -950,6 +953,10 @@ document.addEventListener("DOMContentLoaded", () => {
           const friendlyMsg = data.error || "Live AI is temporarily unavailable because the API quota has been reached. You can still use Tasks and Habits.";
           appendQuotaErrorBubble(friendlyMsg);
           showToast(friendlyMsg, "error");
+        } else if (isTimeout) {
+          const timeoutMsg = data.error || "The AI request timed out. Google's servers may be experiencing high demand.";
+          appendTimeoutErrorBubble(timeoutMsg);
+          showToast(timeoutMsg, "error");
         } else {
           const errorMsg = data.error || "Unable to generate response. Please try again.";
           appendChatBubble("assistant", `⚠️ **Notice:** ${errorMsg}`, false, data.notice);
@@ -965,7 +972,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       state.chatHistory.push({ role: "assistant", content: data.response });
-      appendChatBubble("assistant", data.response, data.is_demo, data.notice, data.timing, data.is_quota_fallback);
+      appendChatBubble("assistant", data.response, data.is_demo, data.notice, data.timing, data.is_quota_fallback, data.is_timeout_fallback);
     } catch (err) {
       appendChatBubble("assistant", "⚠️ Connection error or request timeout. Please ensure the server is running and try again.");
       showToast("Chat request failed. Please check your connection.", "error");
@@ -990,6 +997,34 @@ document.addEventListener("DOMContentLoaded", () => {
         chip.style.opacity = "";
       });
     }
+  }
+
+  function appendTimeoutErrorBubble(message) {
+    if (!chatMessagesEl) return;
+
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble assistant";
+
+    bubble.innerHTML = `
+      <div style="color: #f87171; font-weight: 600; margin-bottom: 6px;">
+        ⏱️ Request Timed Out (504)
+      </div>
+      <div>${escapeHtml(message)}</div>
+      <div class="quota-fallback-box" style="margin-top: 10px;">
+        <p>Google's servers took too long to respond. You can seamlessly generate an instant answer with simulated <strong>Demo Mode</strong>, or try again.</p>
+        <div class="quota-fallback-actions">
+          <button class="btn btn-secondary btn-sm" onclick="window.useDemoFallback()" style="background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
+            🤖 Answer with Simulated Demo Mode
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="window.retryLiveAi()">
+            🔄 Retry Live AI
+          </button>
+        </div>
+      </div>
+    `;
+
+    chatMessagesEl.appendChild(bubble);
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
   function appendQuotaErrorBubble(message) {
@@ -1023,7 +1058,7 @@ document.addEventListener("DOMContentLoaded", () => {
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
-  function appendChatBubble(role, text, isDemo = false, notice = null, timing = null, isQuotaFallback = false) {
+  function appendChatBubble(role, text, isDemo = false, notice = null, timing = null, isQuotaFallback = false, isTimeoutFallback = false) {
     if (!chatMessagesEl) return;
 
     const bubble = document.createElement("div");
@@ -1039,6 +1074,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (isQuotaFallback) {
         metaDiv.innerHTML = `<span class="demo-mode-tag" style="color: #fbbf24;">🤖 Demo Mode (Simulated AI - Quota Fallback)</span>`;
+      } else if (isTimeoutFallback) {
+        metaDiv.innerHTML = `<span class="demo-mode-tag" style="color: #fbbf24;">🤖 Demo Mode (Simulated AI - Timeout Fallback)</span>`;
       } else if (isDemo) {
         metaDiv.innerHTML = `<span class="demo-mode-tag">🤖 Demo Mode (Simulated AI)</span>`;
       } else {

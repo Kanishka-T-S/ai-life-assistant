@@ -349,11 +349,11 @@ def chat_with_assistant(
         effective_api_key = str(api_key).strip()
 
     if model_name is None:
-        effective_model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
+        effective_model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
     else:
         effective_model = str(model_name).strip()
 
-    effective_timeout = timeout_seconds or int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "10"))
+    effective_timeout = timeout_seconds or int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "15"))
 
     # Standard Demo Mode when no API key configured
     if not effective_api_key or not HAS_GENAI_SDK:
@@ -365,6 +365,7 @@ def chat_with_assistant(
             "response": demo_text,
             "is_demo": True,
             "is_quota_fallback": False,
+            "is_timeout_fallback": False,
             "model": "Demo Mode (Simulated Assistant)",
             "api_latency": round(demo_latency, 4),
             "notice": "Operating in Demo Mode. To connect live Gemini AI, set GEMINI_API_KEY in your .env file."
@@ -382,6 +383,7 @@ def chat_with_assistant(
                 "response": demo_text,
                 "is_demo": True,
                 "is_quota_fallback": True,
+                "is_timeout_fallback": False,
                 "model": "Demo Mode (Simulated Assistant - Quota Fallback)",
                 "api_latency": round(demo_latency, 4),
                 "notice": QUOTA_FRIENDLY_MESSAGE
@@ -395,6 +397,7 @@ def chat_with_assistant(
                 "fallback_available": True,
                 "is_demo": False,
                 "is_quota_fallback": False,
+                "is_timeout_fallback": False,
                 "model": effective_model,
                 "api_latency": 0.0,
                 "notice": "Live AI request paused because API quota was reached. Demo Mode is available as a simulated fallback."
@@ -419,7 +422,7 @@ def chat_with_assistant(
         )
 
         config = types.GenerateContentConfig(
-            max_output_tokens=300,
+            max_output_tokens=800,
             temperature=0.7,
             system_instruction=f"{system_instruction}\n\n{system_context}",
             http_options=http_options
@@ -437,21 +440,75 @@ def chat_with_assistant(
             if recent_turns:
                 user_content = f"Recent History:\n{chr(10).join(recent_turns)}\n\nQuestion: {clean_prompt}"
 
-        response = client.models.generate_content(
-            model=effective_model,
-            contents=user_content,
-            config=config
-        )
+        used_model = effective_model
+        try:
+            response = client.models.generate_content(
+                model=effective_model,
+                contents=user_content,
+                config=config
+            )
+        except Exception as initial_exc:
+            err_str = str(initial_exc).lower()
+            # Do not retry if quota is exhausted, if request timed out, or if already on primary model
+            is_quota = is_quota_or_rate_limit_error(initial_exc)
+            is_to = (
+                "timeout" in err_str
+                or "deadline_exceeded" in err_str
+                or "504" in err_str
+                or isinstance(initial_exc, TimeoutError)
+            )
+            can_failover = (
+                not is_quota
+                and not is_to
+                and effective_model != "gemini-3.5-flash-lite"
+                and ("not_found" in err_str or "404" in err_str or "503" in err_str or "unavailable" in err_str)
+            )
+            if can_failover:
+                logger.warning(
+                    "Model '%s' failed (%s). Attempting failover to 'gemini-3.5-flash-lite'.",
+                    effective_model,
+                    type(initial_exc).__name__
+                )
+                used_model = "gemini-3.5-flash-lite"
+                response = client.models.generate_content(
+                    model=used_model,
+                    contents=user_content,
+                    config=config
+                )
+            else:
+                raise initial_exc
 
         api_latency = time.perf_counter() - start_api
-        reply_text = response.text if hasattr(response, "text") and response.text else "I was unable to generate a response. Please try again."
+
+        # Safe extraction of text from response object
+        reply_text = ""
+        try:
+            if hasattr(response, "text") and response.text:
+                reply_text = response.text.strip()
+        except Exception:
+            pass
+
+        if not reply_text and hasattr(response, "candidates") and response.candidates:
+            try:
+                for candidate in response.candidates:
+                    if hasattr(candidate, "content") and hasattr(candidate.content, "parts") and candidate.content.parts:
+                        parts_text = [p.text for p in candidate.content.parts if hasattr(p, "text") and p.text]
+                        if parts_text:
+                            reply_text = "".join(parts_text).strip()
+                            break
+            except Exception:
+                pass
+
+        if not reply_text:
+            reply_text = "I was unable to generate a response. Please try again."
 
         return {
             "success": True,
             "response": reply_text,
             "is_demo": False,
             "is_quota_fallback": False,
-            "model": effective_model,
+            "is_timeout_fallback": False,
+            "model": used_model,
             "api_latency": round(api_latency, 3),
             "notice": None
         }
@@ -561,6 +618,7 @@ def chat_with_assistant(
             "is_quota_exhausted": False,
             "is_demo": False,
             "is_quota_fallback": False,
+            "is_timeout_fallback": False,
             "model": effective_model,
             "api_latency": round(api_latency, 3),
             "notice": f"Upstream error: {error_msg[:100]}"

@@ -89,7 +89,7 @@ def get_dashboard_stats():
     elif quota_exhausted:
         ai_model_desc = "Quota Reached (Demo Fallback Available)"
     else:
-        ai_model_desc = current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash")
+        ai_model_desc = current_app.config.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
     return jsonify({
         "success": True,
@@ -302,8 +302,8 @@ def chat():
 
     db = get_db()
     api_key = current_app.config.get("GEMINI_API_KEY", "")
-    model_name = current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash")
-    timeout_sec = current_app.config.get("GEMINI_TIMEOUT_SECONDS", 10)
+    model_name = current_app.config.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    timeout_sec = current_app.config.get("GEMINI_TIMEOUT_SECONDS", 15)
 
     result = chat_with_assistant(
         prompt=prompt,
@@ -354,7 +354,7 @@ def get_ai_status():
         "has_api_key": has_api_key,
         "is_quota_exhausted": quota_exhausted,
         "cooldown_remaining_sec": get_quota_remaining_cooldown(),
-        "model": current_app.config.get("GEMINI_MODEL", "gemini-3.8-flash")
+        "model": current_app.config.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
     }), 200
 
 
